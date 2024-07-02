@@ -2,28 +2,28 @@
 
 MainStart:
 Test8255::
-		call	SerialPutImmString
-		.asciz "\033[0m\033[2J\n\rTerm via 8255\n\r\r"
+	call	SerialPutImmString
+	.asciz "\033[0m\033[2J\n\rTerm via 8255\n\r\r"
         call    Init8255
         ei
 DO_01000:
-            call    get_keyb
-            ld      b,a
-            call	SerialPutImmString
-            .asciz  "\033[33m"               ;yellow
-            ld      a,b
-            call    SerialDisplayByte
-            call    SerialDisplaySpace
-            ld      a,b
-            call    putb_8255
-            call    get_term
-            ld      b,a
-            call	SerialPutImmString
-            .asciz  "\033[31m"               ;red
-            ld      a,b
-            call    SerialDisplayByte
-            call    SerialDisplaySpace
-            JR	    DO_01000
+        call    get_keyb
+        ld      b,a
+        call	SerialPutImmString
+        .asciz  "\033[33m"               ;yellow
+        ld      a,b
+        call    SerialDisplayByte
+        call    SerialDisplaySpace
+        ld      a,b
+        call    putb_8255
+        call    get_term
+        ld      b,a
+        call	SerialPutImmString
+        .asciz  "\033[31m"               ;red
+        ld      a,b
+        call    SerialDisplayByte
+        call    SerialDisplaySpace
+        JR	DO_01000
 DO_BRK_01000:
         ret
 
@@ -34,8 +34,8 @@ DO_BRK_01000:
 ;            A  modified
 ;-----------------------------------------------------------------------------
 SerialDisplaySpace::
-		ld		a,#0x20
-		jp		SerialPutChar
+	ld	a,#0x20
+	jp	SerialPutChar
 
 ;-----------------------------------------------------------------------------
 ; SerialDisplayByte
@@ -46,26 +46,27 @@ SerialDisplaySpace::
 ;               no register modified
 ;-----------------------------------------------------------------------------
 SerialDisplayByte::
-		call	SerialDisplayMsb
+	call	SerialDisplayMsb
 
 SerialDisplayMsb::
-		rrca
+	rrca
         rrca
         rrca
         rrca
 
 SerialDisplayLsb::
-		push	af
-        and		#0x0f
+	push	af
+        and	#0x0f
 
-		or		a				;clear aux. carry
-		daa
-		add		a,#0xf0
-		adc		a,#0x40
+	;use DAA trick to convert hex nibble to ASCII
+	or	a				;clear aux. carry
+	daa
+	add	a,#0xf0
+	adc	a,#0x40
 
-		call	SerialPutChar
+	call	SerialPutChar
 
-        pop		af
+        pop	af
         ret
 
 ;-----------------------------------------------------------------------------
@@ -77,17 +78,17 @@ SerialDisplayLsb::
 ;            A  modified
 ;-----------------------------------------------------------------------------
 SerialPutImmString::
-		ex		(sp),hl         ;get the return address in HL while it's saved in stack
+	ex	(sp),hl         ;get the return address in HL while it's saved in stack
                                 ;instead of code, we have the string at the return address.
                                 ;when we reach the end of string, we have the return address
 DO_01003:
-            ld		a,(hl)
-            inc 	hl
-            or		a
-            JR	    Z,	DO_BRK_01003
+        ld	a,(hl)
+        inc 	hl
+        or	a
+        JR	Z,DO_BRK_01003
 
-            call	SerialPutChar
-        	JR	    DO_01003
+        call	SerialPutChar
+        JR	DO_01003
 DO_BRK_01003:
         ex (sp),hl              ;return address follows the Null character
         ret
