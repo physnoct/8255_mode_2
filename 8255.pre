@@ -1,0 +1,191 @@
+;-----------------------------------------------------------------------------
+; Adjust to user specific settings
+BaseAddress8255 = 0x14
+int_8255_vector = 0xffe6
+;-----------------------------------------------------------------------------
+
+port_a      = BaseAddress8255
+port_b      = BaseAddress8255 + 1
+port_c      = BaseAddress8255 + 2
+ct_8255     = BaseAddress8255 + 3
+
+st_8255     = port_c ;interface Z80 - PC status
+intf_8255   = port_a ;data
+
+OBFA_BIT    = 7
+IBFA_BIT    = 5
+IBFB_BIT    = 1
+
+;-----------------------------------------------------------------------------
+        .area	data (REL)
+;-----------------------------------------------------------------------------
+
+;must start on a 256 byte boundary
+
+;256-byte buffer for a keyboard attached to port B
+buf_keyb:
+		.blkb	256
+
+;256-byte buffer for a terminal attached to port A
+buf_term:
+		.blkb	256
+
+;Buffer start and end pointers
+;keyboard
+bk_start:
+		.blkw	1
+bk_end:
+		.blkw	1
+;terminal
+bt_start:
+		.blkw	1
+bt_end:
+		.blkw	1
+
+;-----------------------------------------------------------------------------
+        .area	pio_8255 (REL)
+;-----------------------------------------------------------------------------
+Init8255::
+        ld      a,#0xC6             ;MODE 2 AND MODE 1 (INPUT)
+        out     (ct_8255),a
+
+		;Initialize buffer start and end pointers
+		ld      hl,#buf_keyb
+		ld      (bk_start),hl
+		ld      (bk_end),hl
+
+		ld      hl,#buf_term
+		ld      (bt_start),hl
+		ld      (bt_end),hl
+
+        ;initialize Z80 interrupt mode (change according to user hardware)
+        im		2                    ;interrupt mode 2
+        ld		a,#>tab_vect         ;upper byte of table vector
+        ld		i,a
+
+        ;interrupt vector pointer
+		ld      hl,#IsrTest8255
+		ld      (int_8255_vector),hl
+
+        ;enable interrupts
+        ld      a,#0x05         ;INTEB  bit 2 on    input from keyboard
+        out     (ct_8255),a
+        ld      a,#0x09         ;INTE2  bit 4 on    input from terminal
+        out     (ct_8255),a
+        ld      a,#0x0C         ;INTE1  bit 6 off   output to terminal done without interrupts
+        out     (ct_8255),a
+		ret
+
+;-----------------------------------------------------------------------------
+IsrTest8255:
+		push	af
+		push    hl
+        in      a,(st_8255)
+        bit     IBFB_BIT,a
+        jr      nz,int_keyb
+        bit     IBFA_BIT,a
+        jr      nz,int_term
+int_end:
+		pop     hl
+		pop		af
+		ei
+		reti
+
+;-----------------------------------------------------------------------------
+int_keyb:
+		;if (queue is full) then beep and exit
+		;when end = start - 1, queue is full
+		ld		hl,(bk_end)
+		ld		a,(bk_start)
+		dec		a
+		cp		l
+        JR	    NZ,	ELSE_0100001
+            ;Buffer full, beep and exit
+            ;beep
+            JR	ENDIF_01000
+ELSE_0100001:
+            ;read byte and put in buffer
+            in		a,(port_b)
+            ld		(hl),a
+            inc		l
+            ld		(bk_end),hl
+ENDIF_01000:
+		jp		int_end
+
+;-----------------------------------------------------------------------------
+int_term:
+		;if (queue is full) then beep and exit
+		;when end = start - 1, queue is full
+		ld		hl,(bt_end)
+		ld		a,(bt_start)
+		dec		a
+		cp		l
+        JR	NZ,	ELSE_0100101
+            ;Buffer full, beep and exit
+            ;beep
+            JR	ENDIF_01001
+ELSE_0100101:
+            ;read byte and put in buffer
+            in		a,(port_a)
+            ld		(hl),a
+            inc		l
+            ld		(bt_end),hl
+ENDIF_01001:
+		jp		int_end
+
+;-----------------------------------------------------------------------------
+; putb_8255     Send a byte to 8255 port A by polling
+;
+;            A  byte to send
+;-----------------------------------------------------------------------------
+putb_8255::
+        push af
+putb_loop:
+        in      a,(st_8255)
+        bit     OBFA_BIT,a
+        jr      nz,putb_loop
+        pop af
+
+        out     (intf_8255),a
+        ret
+
+;-----------------------------------------------------------------------------
+; get_keyb      Returns a byte in A from the buffer
+;-----------------------------------------------------------------------------
+get_keyb::
+		push	hl
+		;Pull bytes from the start of the queue
+		ld		hl,(bk_start)
+
+		;Wait while queue is empty
+DO_01001:
+            ;if start = end, queue is empty
+            ld		a,(bk_end)
+            cp		l
+            JR	    Z,	DO_01001
+DO_BRK_01001:
+		ld		a,(hl)
+		inc		l
+		ld		(bk_start),hl
+		pop		hl
+		ret
+
+;-----------------------------------------------------------------------------
+; get_term      Returns a byte in A from the buffer
+;-----------------------------------------------------------------------------
+get_term::
+		push	hl
+		;Pull bytes from the start of the queue
+		ld		hl,(bt_start)
+		;Wait while queue is empty
+DO_01002:
+            ;if start = end, queue is empty
+            ld		a,(bt_end)
+            cp		l
+            JR	    Z,	DO_01002
+DO_BRK_01002:
+		ld		a,(hl)
+		inc		l
+		ld		(bt_start),hl
+		pop		hl
+		ret
