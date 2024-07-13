@@ -9,3 +9,6 @@ A bidirectional "terminal" is plugged on the port A. The terminal is another Z80
 
 I had difficulties getting this to work without interrupts, as I couldn't receive bytes from the terminal or the keyboard without first writing to the terminal.
 By using interrupts, this solved the problem.
+
+Arduino side: .cpp, .h, .ino files
+Z80 side: .pre files (assemble and link with SDCC assembler: sdasz80 -glos *.pre)
